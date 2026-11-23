@@ -3,7 +3,7 @@
 A small client-side add-on for [SkyRecipes](https://modrinth.com/mod/enhanced-skyrecipes) (Hypixel SkyBlock recipes in [RRV](https://modrinth.com/mod/rrv)).
 SkyTree adds:
 
-- **Crafting trees**: the full crafting and forge tree of an item, with the summed **raw materials** and how many of each you already own.
+- **Crafting trees**: the full crafting and forge tree of an item, with the summed **raw materials**. Items you already own are subtracted along the way: if you have 100 of the 160 Enchanted Diamonds, only the other 60 get expanded.
 - **Pinned recipes**: pin an item and its ingredients stay on your HUD (and next to open menus) with live have/need counts (inventory, sacks, storage, …).
 
 All item and recipe data comes from SkyRecipes (NEU repo), so SkyTree has no data of its own.
@@ -20,6 +20,7 @@ All item and recipe data comes from SkyRecipes (NEU repo), so SkyTree has no dat
 In the tree screen:
 
 - **Left click** a row to fold or unfold it, **right click** to open that item's recipes in RRV.
+- **Middle click** switches to the item's next recipe if it has several (e.g. Enchanted Diamond from diamonds or diamond blocks). The choice is remembered (`config/skytree-recipes.json`) and also used for pins.
 - **− / +** change the amount you want to craft; the whole tree and raw-material list scale with it.
 - **Pin** pins the item with the current amount.
 
@@ -27,7 +28,8 @@ Keys can be changed under *Options → Controls → SkyTree*. Pins are saved in 
 
 ## Notes
 
-- The tree uses an item's first crafting recipe, otherwise its first forge recipe. Vanilla items count as raw materials.
+- By default the tree uses an item's first crafting recipe, otherwise its first forge recipe. Vanilla items count as raw materials.
+- Owned items are shared out once: two branches (or two pins) needing the same material never both count the same stack. The item you open the tree for is never subtracted, since you want to craft more of it.
 - "Have" counts everything you own: inventory, sacks, ender chest, backpacks, vault, wardrobe, equipment and accessory bag. Hover a raw material in the tree to see where it is.
   Everything except the inventory comes from [SkyBlockAPI](https://github.com/SkyblockAPI/SkyblockAPI) (bundled with SkyOcean), which remembers sacks and storage once you have opened them. Without it, only the inventory is counted.
 

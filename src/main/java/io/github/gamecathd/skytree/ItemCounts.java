@@ -21,6 +21,11 @@ public final class ItemCounts {
         return total.getOrDefault(id, 0L);
     }
 
+    /** Mutable copy of all totals, for {@link CraftingTree#build} to consume. */
+    public Map<String, Long> totals() {
+        return new HashMap<>(total);
+    }
+
     /** Source name → amount, e.g. {"Sacks": 1200, "Inventory": 64}. */
     public Map<String, Long> where(String id) {
         return where.getOrDefault(id, Map.of());

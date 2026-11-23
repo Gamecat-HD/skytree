@@ -11,13 +11,16 @@ import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Crafting tree of one item: expandable ingredient tree on the left, summed raw materials
  * (with what you already own, hover for where) on the right.
- * Left click a row folds it, right click opens the item's recipes in RRV.
+ * Items you already own are subtracted along the way.
+ * Left click a row folds it, right click opens the item's recipes in RRV, middle click
+ * switches to the item's next recipe when it has several.
  */
 public class TreeScreen extends Screen {
 
@@ -28,10 +31,12 @@ public class TreeScreen extends Screen {
     private final String id;
     private long amount;
     private CraftingTree.Node root;
-    private Map<String, Long> raw;
+    private Map<String, CraftingTree.Total> raw;
     private ItemCounts have;
     private final Map<String, ItemStack> stacks = new HashMap<>();
-    private record Row(CraftingTree.Node node, int depth) {}
+    private record Row(CraftingTree.Node node, int depth, String path) {}
+    /** Folded rows by path from the root, so folding survives rebuilds. */
+    private final java.util.Set<String> collapsed = new HashSet<>();
     private final List<Row> rows = new ArrayList<>();
     private double scrollTree, scrollRaw;
     private Button pinButton;
@@ -45,20 +50,24 @@ public class TreeScreen extends Screen {
     }
 
     private void rebuild() {
-        root = SkyData.tree(id, amount);
-        raw = CraftingTree.rawMaterials(root);
         have = ItemCounts.collect();
+        root = SkyData.tree(id, amount, have.totals());
+        raw = CraftingTree.rawMaterials(root);
         refreshRows();
     }
 
     private void refreshRows() {
         rows.clear();
-        addRows(root, 0);
+        addRows(root, 0, root.id);
     }
 
-    private void addRows(CraftingTree.Node n, int depth) {
-        rows.add(new Row(n, depth));
-        if (!n.collapsed) n.children.forEach(c -> addRows(c, depth + 1));
+    private void addRows(CraftingTree.Node n, int depth, String path) {
+        rows.add(new Row(n, depth, path));
+        if (collapsed.contains(path)) return;
+        for (int i = 0; i < n.children.size(); i++) {
+            CraftingTree.Node c = n.children.get(i);
+            addRows(c, depth + 1, path + "/" + i + ":" + c.id);
+        }
     }
 
     @Override
@@ -89,6 +98,7 @@ public class TreeScreen extends Screen {
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float delta) {
         super.extractRenderState(g, mouseX, mouseY, delta);
         g.text(font, SkyData.name(id) + " §7x" + amount, 58, 12, 0xFFFFFFFF, true);
+        g.text(font, "§8Left: fold · Right: recipes · Middle: other recipe", 8, TOP - 12, 0xFFFFFFFF, false);
         pinButton.setMessage(pinLabel());
 
         int split = split();
@@ -104,11 +114,10 @@ public class TreeScreen extends Screen {
             if (y + ROW > TOP && y < bottom) {
                 int x = 8 + r.depth * 12;
                 CraftingTree.Node n = r.node;
-                if (!n.children.isEmpty()) g.text(font, n.collapsed ? "+" : "-", x, y + 4, 0xFFAAAAAA, false);
+                if (!n.children.isEmpty()) g.text(font, collapsed.contains(r.path) ? "+" : "-", x, y + 4, 0xFFAAAAAA, false);
                 ItemStack s = stack(n.id);
                 g.item(s, x + 8, y);
-                String info = n.recipe == null ? "" : " §8(" + n.recipe.kind() + (n.crafts() > 1 ? " x" + n.crafts() : "") + ")";
-                g.text(font, "§e" + PinHud.fmt(n.amount) + "§7x " + SkyData.name(n.id) + info, x + 28, y + 4, 0xFFFFFFFF, true);
+                g.text(font, rowText(n), x + 28, y + 4, 0xFFFFFFFF, true);
                 if (mouseY >= y && mouseY < y + ROW && mouseX < split && mouseY >= TOP && mouseY < bottom) {
                     g.fill(0, y, split, y + ROW, 0x20FFFFFF);
                     if (mouseX >= x + 8 && mouseX < x + 24) hovered = s;
@@ -122,11 +131,11 @@ public class TreeScreen extends Screen {
         g.text(font, "§lRaw materials", split + 8, TOP - 12, 0xFFFFFFFF, true);
         g.enableScissor(split + 1, TOP, width, bottom);
         y = TOP - (int) scrollRaw;
-        for (Map.Entry<String, Long> e : raw.entrySet()) {
-            long n = have.get(e.getKey());
+        for (Map.Entry<String, CraftingTree.Total> e : raw.entrySet()) {
+            CraftingTree.Total t = e.getValue();
             ItemStack s = stack(e.getKey());
             g.item(s, split + 8, y);
-            g.text(font, (n >= e.getValue() ? "§a" : "§c") + PinHud.fmt(n) + "§7/" + PinHud.fmt(e.getValue()) + " §f" + SkyData.name(e.getKey()),
+            g.text(font, (t.owned() >= t.need() ? "§a" : "§c") + PinHud.fmt(t.owned()) + "§7/" + PinHud.fmt(t.need()) + " §f" + SkyData.name(e.getKey()),
                     split + 28, y + 4, 0xFFFFFFFF, true);
             if (mouseX >= split && mouseY >= y && mouseY < y + 16 && mouseY >= TOP && mouseY < bottom) {
                 if (mouseX < split + 24) hovered = s;
@@ -141,6 +150,19 @@ public class TreeScreen extends Screen {
         } else if (hoveredRaw != null) {
             g.setTooltipForNextFrame(font, whereTooltip(hoveredRaw), java.util.Optional.empty(), mouseX, mouseY);
         }
+    }
+
+    private static String rowText(CraftingTree.Node n) {
+        StringBuilder sb = new StringBuilder(n.owned >= n.amount && n.owned > 0 ? "§a✔ " : "");
+        sb.append("§e").append(PinHud.fmt(n.amount)).append("§7x ").append(SkyData.name(n.id));
+        if (n.owned > 0 && n.owned < n.amount) sb.append(" §a(have ").append(PinHud.fmt(n.owned)).append(")");
+        if (n.recipe != null) {
+            sb.append(" §8(").append(n.recipe.kind());
+            if (n.crafts() > 1) sb.append(" x").append(n.crafts());
+            if (n.recipeCount > 1) sb.append(", recipe ").append(n.recipeIndex + 1).append("/").append(n.recipeCount);
+            sb.append(")");
+        }
+        return sb.toString();
     }
 
     private List<Component> whereTooltip(String itemId) {
@@ -161,11 +183,17 @@ public class TreeScreen extends Screen {
         if (event.x() >= split() || event.y() < TOP) return false;
         int i = (int) ((event.y() - TOP + scrollTree) / ROW);
         if (i < 0 || i >= rows.size()) return false;
-        CraftingTree.Node n = rows.get(i).node;
+        Row row = rows.get(i);
+        CraftingTree.Node n = row.node;
         if (event.button() == 1) {
             ItemViewOverlay.INSTANCE.openRecipeView(stack(n.id), ActionType.RESULT);
+        } else if (event.button() == 2) {
+            if (n.recipeCount > 1) {
+                Pins.nextRecipe(n.id, n.recipeCount);
+                rebuild();
+            }
         } else if (!n.children.isEmpty()) {
-            n.collapsed = !n.collapsed;
+            if (!collapsed.remove(row.path)) collapsed.add(row.path);
             refreshRows();
         }
         return true;

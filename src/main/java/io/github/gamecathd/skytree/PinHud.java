@@ -9,33 +9,42 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/** Draws the pinned recipes with have/need counts (inventory, sacks, storage…). */
+/**
+ * Draws the pinned recipes with have/need per ingredient. All pins share one pool of owned
+ * items, so two pins needing the same material don't both claim the same stack.
+ */
 public final class PinHud {
 
-    private record Line(String id, long need) {}
-    private record Pin(String id, long amount, ItemStack icon, String name, List<Line> lines) {}
+    private record Line(String id, long need, long owned) {}
+    private record Pin(long amount, ItemStack icon, String name, List<Line> lines) {}
 
-    private static List<Pin> cache;
-    private static ItemCounts have = new ItemCounts();
-    private static long haveAt;
+    private static List<Pin> cache = List.of();
+    private static long builtAt;
 
     private PinHud() {}
 
     public static void invalidate() {
-        cache = null;
+        builtAt = 0;
     }
 
     private static List<Pin> pins() {
-        if (cache != null) return cache;
-        if (SkyData.registry() == null) return List.of();
+        if (System.currentTimeMillis() - builtAt < 500) return cache;
+        builtAt = System.currentTimeMillis();
+        if (SkyData.registry() == null || Pins.all().isEmpty()) return cache = List.of();
+
+        Map<String, Long> pool = ItemCounts.collect().totals();
         List<Pin> out = new ArrayList<>();
         for (Map.Entry<String, Long> e : Pins.all().entrySet()) {
-            CraftingTree.Node node = SkyData.tree(e.getKey(), e.getValue());
+            CraftingTree.Node node = SkyData.tree(e.getKey(), e.getValue(), pool);
             List<Line> lines = new ArrayList<>();
-            // Direct ingredients of the recipe; a pinned raw material just tracks itself.
-            if (node.children.isEmpty()) lines.add(new Line(node.id, node.amount));
-            for (CraftingTree.Node c : node.children) lines.add(new Line(c.id, c.amount));
-            out.add(new Pin(node.id, node.amount, SkyData.stack(node.id), SkyData.name(node.id), lines));
+            if (node.children.isEmpty()) {
+                // A pinned raw material just tracks itself.
+                long have = Math.min(node.amount, pool.getOrDefault(node.id, 0L));
+                pool.merge(node.id, -have, Long::sum);
+                lines.add(new Line(node.id, node.amount, have));
+            }
+            for (CraftingTree.Node c : node.children) lines.add(new Line(c.id, c.amount, c.owned));
+            out.add(new Pin(node.amount, SkyData.stack(node.id), SkyData.name(node.id), lines));
         }
         return cache = out;
     }
@@ -53,10 +62,6 @@ public final class PinHud {
         List<Pin> pins = pins();
         if (pins.isEmpty()) return;
         Font font = Minecraft.getInstance().font;
-        if (System.currentTimeMillis() - haveAt > 500) {
-            have = ItemCounts.collect();
-            haveAt = System.currentTimeMillis();
-        }
 
         int w = width(font);
         int h = 4;
@@ -77,13 +82,12 @@ public final class PinHud {
     }
 
     private static String header(Pin p) {
-        boolean done = p.lines.stream().allMatch(l -> have.get(l.id) >= l.need);
+        boolean done = p.lines.stream().allMatch(l -> l.owned >= l.need);
         return (done ? "§a✔ " : "") + p.name + (p.amount > 1 ? " §7x" + p.amount : "");
     }
 
     private static String line(Line l) {
-        long n = have.get(l.id);
-        return (n >= l.need ? "§a" : "§c") + fmt(n) + "§7/" + fmt(l.need) + " §f" + SkyData.name(l.id);
+        return (l.owned >= l.need ? "§a" : "§c") + fmt(l.owned) + "§7/" + fmt(l.need) + " §f" + SkyData.name(l.id);
     }
 
     static String fmt(long n) {

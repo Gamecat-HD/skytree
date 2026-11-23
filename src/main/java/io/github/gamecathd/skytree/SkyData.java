@@ -24,34 +24,37 @@ public final class SkyData {
         return SkyRecipes.isDataReady() ? SkyRecipes.getItemRegistry() : null;
     }
 
-    public static CraftingTree.Node tree(String id, long amount) {
-        return CraftingTree.build(id, amount, SkyData::recipeFor);
+    /** @param owned items you own (see {@link ItemCounts#totals()}); consumed by the tree */
+    public static CraftingTree.Node tree(String id, long amount, Map<String, Long> owned) {
+        return CraftingTree.build(id, amount, SkyData::recipesFor, Pins.recipeChoices(), owned);
     }
 
     /**
-     * First crafting recipe, else first forge recipe. Vanilla items are treated as raw
+     * Crafting recipes first, then forge recipes. Vanilla items are treated as raw
      * materials so NEU's vanilla un-crafting recipes (diamond ← diamond block) don't loop.
      */
-    static CraftingTree.Recipe recipeFor(String id) {
+    static List<CraftingTree.Recipe> recipesFor(String id) {
         ItemRegistry reg = registry();
         NeuItem item = reg == null ? null : reg.getOrNull(id);
-        if (item == null || item.vanilla()) return null;
+        if (item == null || item.vanilla()) return List.of();
 
         List<NeuRecipe> all = new ArrayList<>();
         if (item.recipe() != null) all.add(item.recipe());
         if (item.recipes() != null) all.addAll(item.recipes());
 
+        List<CraftingTree.Recipe> out = new ArrayList<>();
         for (NeuRecipe r : all) {
             if (r instanceof NeuRecipe.CraftingRecipe c && isFor(id, c.overrideOutputId())) {
-                return new CraftingTree.Recipe("crafting", Math.max(1, c.count()), inputs(c.grid().values()));
+                out.add(new CraftingTree.Recipe("crafting", Math.max(1, c.count()), inputs(c.grid().values())));
             }
         }
         for (NeuRecipe r : all) {
             if (r instanceof NeuRecipe.ForgeRecipe f && isFor(id, f.overrideOutputId())) {
-                return new CraftingTree.Recipe("forge", Math.max(1, f.count()), inputs(f.inputs()));
+                out.add(new CraftingTree.Recipe("forge", Math.max(1, f.count()), inputs(f.inputs())));
             }
         }
-        return null;
+        // The legacy single recipe can also appear migrated in the list; drop duplicates.
+        return out.stream().distinct().toList();
     }
 
     private static boolean isFor(String id, String overrideOutputId) {
