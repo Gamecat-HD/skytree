@@ -16,7 +16,7 @@ import java.util.Map;
 
 /**
  * Crafting tree of one item: expandable ingredient tree on the left, summed raw materials
- * (with what you already carry) on the right.
+ * (with what you already own, hover for where) on the right.
  * Left click a row folds it, right click opens the item's recipes in RRV.
  */
 public class TreeScreen extends Screen {
@@ -29,7 +29,7 @@ public class TreeScreen extends Screen {
     private long amount;
     private CraftingTree.Node root;
     private Map<String, Long> raw;
-    private Map<String, Long> have;
+    private ItemCounts have;
     private final Map<String, ItemStack> stacks = new HashMap<>();
     private record Row(CraftingTree.Node node, int depth) {}
     private final List<Row> rows = new ArrayList<>();
@@ -47,7 +47,7 @@ public class TreeScreen extends Screen {
     private void rebuild() {
         root = SkyData.tree(id, amount);
         raw = CraftingTree.rawMaterials(root);
-        have = SkyData.inventoryCounts();
+        have = ItemCounts.collect();
         refreshRows();
     }
 
@@ -99,6 +99,7 @@ public class TreeScreen extends Screen {
         g.enableScissor(0, TOP, split, bottom);
         int y = TOP - (int) scrollTree;
         ItemStack hovered = null;
+        String hoveredRaw = null;
         for (Row r : rows) {
             if (y + ROW > TOP && y < bottom) {
                 int x = 8 + r.depth * 12;
@@ -122,17 +123,32 @@ public class TreeScreen extends Screen {
         g.enableScissor(split + 1, TOP, width, bottom);
         y = TOP - (int) scrollRaw;
         for (Map.Entry<String, Long> e : raw.entrySet()) {
-            long n = have.getOrDefault(e.getKey(), 0L);
+            long n = have.get(e.getKey());
             ItemStack s = stack(e.getKey());
             g.item(s, split + 8, y);
             g.text(font, (n >= e.getValue() ? "§a" : "§c") + PinHud.fmt(n) + "§7/" + PinHud.fmt(e.getValue()) + " §f" + SkyData.name(e.getKey()),
                     split + 28, y + 4, 0xFFFFFFFF, true);
-            if (mouseX >= split + 8 && mouseX < split + 24 && mouseY >= y && mouseY < y + 16 && mouseY >= TOP && mouseY < bottom) hovered = s;
+            if (mouseX >= split && mouseY >= y && mouseY < y + 16 && mouseY >= TOP && mouseY < bottom) {
+                if (mouseX < split + 24) hovered = s;
+                else hoveredRaw = e.getKey();
+            }
             y += ROW;
         }
         g.disableScissor();
 
-        if (hovered != null) g.setTooltipForNextFrame(font, hovered, mouseX, mouseY);
+        if (hovered != null) {
+            g.setTooltipForNextFrame(font, hovered, mouseX, mouseY);
+        } else if (hoveredRaw != null) {
+            g.setTooltipForNextFrame(font, whereTooltip(hoveredRaw), java.util.Optional.empty(), mouseX, mouseY);
+        }
+    }
+
+    private List<Component> whereTooltip(String itemId) {
+        List<Component> lines = new ArrayList<>();
+        lines.add(Component.literal(SkyData.name(itemId)));
+        have.where(itemId).forEach((src, n) -> lines.add(Component.literal("§7" + src + ": §f" + PinHud.fmt(n))));
+        if (lines.size() == 1) lines.add(Component.literal("§7None found"));
+        return lines;
     }
 
     private ItemStack stack(String itemId) {

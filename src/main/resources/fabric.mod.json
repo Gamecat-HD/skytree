@@ -16,5 +16,8 @@
     "fabric-api": "*",
     "skyrecipes": ">=0.5.13",
     "rrv": "*"
+  },
+  "suggests": {
+    "skyblock-api": "*"
   }
 }

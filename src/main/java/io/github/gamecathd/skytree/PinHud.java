@@ -9,14 +9,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-/** Draws the pinned recipes with have/need counts from the player's inventory. */
+/** Draws the pinned recipes with have/need counts (inventory, sacks, storage…). */
 public final class PinHud {
 
     private record Line(String id, long need) {}
     private record Pin(String id, long amount, ItemStack icon, String name, List<Line> lines) {}
 
     private static List<Pin> cache;
-    private static Map<String, Long> have = Map.of();
+    private static ItemCounts have = new ItemCounts();
     private static long haveAt;
 
     private PinHud() {}
@@ -54,7 +54,7 @@ public final class PinHud {
         if (pins.isEmpty()) return;
         Font font = Minecraft.getInstance().font;
         if (System.currentTimeMillis() - haveAt > 500) {
-            have = SkyData.inventoryCounts();
+            have = ItemCounts.collect();
             haveAt = System.currentTimeMillis();
         }
 
@@ -77,12 +77,12 @@ public final class PinHud {
     }
 
     private static String header(Pin p) {
-        boolean done = p.lines.stream().allMatch(l -> have.getOrDefault(l.id, 0L) >= l.need);
+        boolean done = p.lines.stream().allMatch(l -> have.get(l.id) >= l.need);
         return (done ? "§a✔ " : "") + p.name + (p.amount > 1 ? " §7x" + p.amount : "");
     }
 
     private static String line(Line l) {
-        long n = have.getOrDefault(l.id, 0L);
+        long n = have.get(l.id);
         return (n >= l.need ? "§a" : "§c") + fmt(n) + "§7/" + fmt(l.need) + " §f" + SkyData.name(l.id);
     }
 

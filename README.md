@@ -3,8 +3,8 @@
 A small client-side add-on for [SkyRecipes](https://modrinth.com/mod/enhanced-skyrecipes) (Hypixel SkyBlock recipes in [RRV](https://modrinth.com/mod/rrv)).
 SkyTree adds:
 
-- **Crafting trees**: the full crafting and forge tree of an item, with the summed **raw materials** and how many of each you already carry.
-- **Pinned recipes**: pin an item and its ingredients stay on your HUD (and next to open menus) with live have/need counts from your inventory.
+- **Crafting trees**: the full crafting and forge tree of an item, with the summed **raw materials** and how many of each you already own.
+- **Pinned recipes**: pin an item and its ingredients stay on your HUD (and next to open menus) with live have/need counts (inventory, sacks, storage, …).
 
 All item and recipe data comes from SkyRecipes (NEU repo), so SkyTree has no data of its own.
 
@@ -28,7 +28,8 @@ Keys can be changed under *Options → Controls → SkyTree*. Pins are saved in 
 ## Notes
 
 - The tree uses an item's first crafting recipe, otherwise its first forge recipe. Vanilla items count as raw materials.
-- "Have" counts only look at your inventory, not sacks or storage.
+- "Have" counts everything you own: inventory, sacks, ender chest, backpacks, vault, wardrobe, equipment and accessory bag. Hover a raw material in the tree to see where it is.
+  Everything except the inventory comes from [SkyBlockAPI](https://github.com/SkyblockAPI/SkyblockAPI) (bundled with SkyOcean), which remembers sacks and storage once you have opened them. Without it, only the inventory is counted.
 
 ## Requirements
 
